@@ -53,7 +53,14 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf data
-          curl -sSfL --retry 5 -o /tmp/de.pbf https://download.geofabrik.de/europe/germany-latest.osm.pbf
+          ok=0
+          for u in https://download.geofabrik.de/europe/germany-latest.osm.pbf https://download.openstreetmap.fr/extracts/europe/germany-latest.osm.pbf https://download.openstreetmap.fr/extracts/europe/germany.osm.pbf; do
+            for i in 1 2 3; do
+              if curl -sSfL --connect-timeout 30 --retry 3 --retry-all-errors -o /tmp/de.pbf "$u"; then ok=1; break 2; fi
+              echo "Download fehlgeschlagen: $u (Versuch $i)"; sleep 30
+            done
+          done
+          [ "$ok" = 1 ] || { echo "Kein Download möglich"; exit 1; }
           ls -lh /tmp/de.pbf
           osmium tags-filter /tmp/de.pbf -e build/filters.txt -o /tmp/f.pbf --overwrite
           rm /tmp/de.pbf
