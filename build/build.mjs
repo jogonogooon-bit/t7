@@ -22,9 +22,10 @@ const AMEN = /^(hospital|nursing_home|charging_station|bus_station|police|fire_s
 const LOGI_RX = /logisti|spedition|transport|lager|distribution|fulfil|paket|parcel|hub|umschlag|dhl|amazon|hermes|dpd|gls|ups|fedex|rhenus|dachser|schenker|kühne|kuehne|fiege|nagel|hellmann|zentrallager/i;
 const FOOD_RX = /fleisch|schlacht|wurst|molkerei|käserei|futter|food|lebensmittel|backwaren|großbäckerei|geflügel|tiefkühl|brauerei/i;
 // Planungs-Richtwerte: m² Geschossfläche je Arbeitsplatz, Standard-Geschosse, Anteil Schicht-/Nachtarbeit
+// Schichtanteile kalibriert: regelmäßige Nachtarbeit ≈ 4 % aller Beschäftigten (Destatis AKE 2025), Schichtarbeit ≈ 15 %
 const JOBS = {
-  office: [30, 3, 0.05], commercial: [40, 2, 0.1], industrial: [100, 1, 0.5], factory: [90, 1, 0.55],
-  manufacture: [90, 1, 0.55], warehouse: [200, 1, 0.6], hangar: [300, 1, 0.3],
+  office: [30, 3, 0.02], commercial: [40, 2, 0.05], industrial: [100, 1, 0.25], factory: [90, 1, 0.3],
+  manufacture: [90, 1, 0.3], warehouse: [200, 1, 0.4], hangar: [300, 1, 0.2],
 };
 
 function wanted(t, type) {
@@ -106,7 +107,7 @@ if (args.osm) {
         const lv = Math.min(20, Math.max(1, num(tags['building:levels']) || jb[1]));
         const jobs = (area * lv) / jb[0];
         let sh = jb[2]; const nm = `${tags.name || ''} ${tags.operator || ''}`;
-        if (LOGI_RX.test(nm)) sh = 0.85; else if (FOOD_RX.test(nm)) sh = 0.8;
+        if (LOGI_RX.test(nm)) sh = 0.6; else if (FOOD_RX.test(nm)) sh = 0.5;
         const bk = `${Math.floor(y / 0.0025)}_${Math.floor(x / 0.004)}`;
         let b = jobB.get(bk); if (!b) jobB.set(bk, (b = { j: 0, s: 0, y: 0, x: 0 }));
         b.j += jobs; b.s += jobs * sh; b.y += y * jobs; b.x += x * jobs; bld++;
