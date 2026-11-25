@@ -11,9 +11,13 @@ on:
         description: 'Daten neu aufbauen'
         type: boolean
         default: false
+      export:
+        description: 'Verschlüsselte Daten zusätzlich in Branch data legen'
+        type: boolean
+        default: false
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -110,6 +114,15 @@ jobs:
           rm -rf data
           NODE_OPTIONS=--max-old-space-size=12288 node build/build.mjs --out data --osm /tmp/f.geojsonseq --zensus /tmp/z.csv --bnetza /tmp/b.csv --gtfs /tmp/gtfs
           du -sh data
+
+      - name: Verschlüsselte Daten in Branch data (nur auf Anforderung)
+        if: inputs.export
+        run: |
+          cd data
+          git init -q -b data
+          git config user.name build && git config user.email build@users.noreply.github.com
+          git add -A && git commit -q -m data
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" data:data
 
       - name: Seite zusammenstellen
         run: |
