@@ -1,0 +1,12 @@
+nwr/landuse=industrial
+nwr/man_made=works
+nwr/industrial
+nwr/building=warehouse,industrial,factory,manufacture,dormitory
+nwr/amenity=hospital,nursing_home,charging_station,bus_station,police,fire_station,university,college,car_wash,vending_machine,fuel,fast_food,restaurant,cafe,bar,pub,biergarten,nightclub,cinema,canteen,ice_cream,social_facility,parking
+nwr/shop=supermarket,convenience,kiosk,bakery,pastry,beverages,variety_store,deli,butcher,farm,laundry,food,general
+nwr/railway=station,halt
+nwr/highway=rest_area,services
+nwr/tourism=hotel,motel,hostel,guest_house,camp_site,caravan_site
+nwr/leisure=fitness_centre,swimming_area,water_park,marina,beach_resort
+nwr/natural=beach
+n/place=village,hamlet,suburb,quarter,neighbourhood

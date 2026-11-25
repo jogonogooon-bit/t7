@@ -1,0 +1,85 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+    inputs:
+      rebuild:
+        description: 'Daten neu aufbauen'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Woche bestimmen
+        id: wk
+        run: echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+
+      - name: Daten-Cache
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: data
+          key: data-v1-${{ steps.wk.outputs.week }}-${{ hashFiles('build/build.mjs', 'build/filters.txt') }}
+
+      - name: Werkzeuge
+        if: steps.cache.outputs.cache-hit != 'true' || inputs.rebuild
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool
+
+      - uses: actions/setup-node@v4
+        if: steps.cache.outputs.cache-hit != 'true' || inputs.rebuild
+        with:
+          node-version: 22
+
+      - name: Daten aufbereiten
+        if: steps.cache.outputs.cache-hit != 'true' || inputs.rebuild
+        run: |
+          set -euo pipefail
+          rm -rf data
+          curl -sSfL --retry 5 -o /tmp/de.pbf https://download.geofabrik.de/europe/germany-latest.osm.pbf
+          ls -lh /tmp/de.pbf
+          osmium tags-filter /tmp/de.pbf -e build/filters.txt -o /tmp/f.pbf --overwrite
+          rm /tmp/de.pbf
+          osmium export /tmp/f.pbf -f geojsonseq -a type,id -x print_record_separator=false -o /tmp/f.geojsonseq --overwrite
+          rm /tmp/f.pbf
+          NODE_OPTIONS=--max-old-space-size=10240 node build/build.mjs data < /tmp/f.geojsonseq
+          rm /tmp/f.geojsonseq
+          du -sh data
+
+      - name: Seite zusammenstellen
+        run: |
+          mkdir -p _site
+          cp index.html _site/
+          cp -r data _site/data
+          touch _site/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
