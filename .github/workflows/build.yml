@@ -37,7 +37,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: data
-          key: data-v1-${{ steps.wk.outputs.week }}-${{ hashFiles('build/build.mjs', 'build/filters.txt') }}
+          key: data-v2-${{ steps.wk.outputs.week }}-${{ hashFiles('build/build.mjs', 'build/filters.txt') }}
 
       - name: Werkzeuge
         if: steps.cache.outputs.cache-hit != 'true' || inputs.rebuild
@@ -52,7 +52,6 @@ jobs:
         if: steps.cache.outputs.cache-hit != 'true' || inputs.rebuild
         run: |
           set -euo pipefail
-          rm -rf data
           ok=0
           for u in https://download.geofabrik.de/europe/germany-latest.osm.pbf https://download.openstreetmap.fr/extracts/europe/germany-latest.osm.pbf https://download.openstreetmap.fr/extracts/europe/germany.osm.pbf; do
             for i in 1 2 3; do
@@ -66,8 +65,35 @@ jobs:
           rm /tmp/de.pbf
           osmium export /tmp/f.pbf -f geojsonseq -a type,id -x print_record_separator=false -o /tmp/f.geojsonseq --overwrite
           rm /tmp/f.pbf
-          NODE_OPTIONS=--max-old-space-size=10240 node build/build.mjs data < /tmp/f.geojsonseq
-          rm /tmp/f.geojsonseq
+
+      - name: Amtliche Zusatzdaten laden (optional)
+        if: steps.cache.outputs.cache-hit != 'true' || inputs.rebuild
+        continue-on-error: true
+        run: |
+          set +e
+          UA="Mozilla/5.0 (X11; Linux x86_64) data-build"
+          # Zensus 2022 – Bevölkerung im 100-m-Gitter
+          Z=""
+          for u in https://www.zensus2022.de/static/Zensus_Veroeffentlichung/Zensus2022_Bevoelkerungszahl.zip; do curl -sSfL -A "$UA" --retry 3 -o /tmp/z.zip "$u" && Z=ok && break; done
+          if [ -z "$Z" ]; then
+            L=$(curl -sSfL -A "$UA" https://www.zensus2022.de/DE/Ergebnisse-des-Zensus/gitterzellen.html | grep -oiE 'href="[^"]*Bevoelkerungszahl[^"]*\.zip[^"]*"' | head -1 | sed -E 's/^href="//; s/"$//; s/&amp;/\&/g')
+            [ -n "$L" ] && { case "$L" in http*) ;; *) L="https://www.zensus2022.de$L";; esac; curl -sSfL -A "$UA" -o /tmp/z.zip "$L" && Z=ok; }
+          fi
+          if [ -n "$Z" ]; then unzip -l /tmp/z.zip | head -20; F=$(unzip -Z1 /tmp/z.zip | grep -iE '100m.*\.csv$' | head -1); [ -n "$F" ] && unzip -p /tmp/z.zip "$F" > /tmp/z.csv; ls -lh /tmp/z.csv; fi
+          # Ladesäulenregister der Bundesnetzagentur
+          L=$(curl -sSfL -A "$UA" https://www.bundesnetzagentur.de/ladeinfrastruktur | grep -oiE 'href="[^"]*\.csv[^"]*"' | head -1 | sed -E 's/^href="//; s/"$//; s/&amp;/\&/g')
+          if [ -n "$L" ]; then case "$L" in http*) ;; *) L="https://www.bundesnetzagentur.de$L";; esac; echo "BNetzA: $L"; curl -sSfL -A "$UA" -o /tmp/b.csv "$L"; ls -lh /tmp/b.csv; else echo "BNetzA-Link nicht gefunden"; fi
+          # Fahrplandaten (GTFS) Deutschland
+          for u in https://download.gtfs.de/germany/free/latest.zip https://download.gtfs.de/germany/nv_free/latest.zip; do curl -sSfL -A "$UA" --retry 3 -o /tmp/g.zip "$u" && break; done
+          if [ -s /tmp/g.zip ]; then mkdir -p /tmp/gtfs && unzip -o -q /tmp/g.zip -d /tmp/gtfs stops.txt stop_times.txt trips.txt routes.txt calendar.txt; ls -lh /tmp/gtfs; fi
+          exit 0
+
+      - name: Zellen bauen & verschlüsseln
+        if: steps.cache.outputs.cache-hit != 'true' || inputs.rebuild
+        run: |
+          set -euo pipefail
+          rm -rf data
+          NODE_OPTIONS=--max-old-space-size=12288 node build/build.mjs --out data --osm /tmp/f.geojsonseq --zensus /tmp/z.csv --bnetza /tmp/b.csv --gtfs /tmp/gtfs
           du -sh data
 
       - name: Seite zusammenstellen
