@@ -37,7 +37,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: data
-          key: data-v2-${{ steps.wk.outputs.week }}-${{ hashFiles('build/build.mjs', 'build/filters.txt') }}
+          key: data-v3-${{ steps.wk.outputs.week }}-${{ hashFiles('build/build.mjs', 'build/filters.txt') }}
 
       - name: Werkzeuge
         if: steps.cache.outputs.cache-hit != 'true' || inputs.rebuild
@@ -72,14 +72,26 @@ jobs:
         run: |
           set +e
           UA="Mozilla/5.0 (X11; Linux x86_64) data-build"
-          # Zensus 2022 – Bevölkerung im 100-m-Gitter
-          Z=""
-          for u in https://www.zensus2022.de/static/Zensus_Veroeffentlichung/Zensus2022_Bevoelkerungszahl.zip; do curl -sSfL -A "$UA" --retry 3 -o /tmp/z.zip "$u" && Z=ok && break; done
-          if [ -z "$Z" ]; then
-            L=$(curl -sSfL -A "$UA" https://www.zensus2022.de/DE/Ergebnisse-des-Zensus/gitterzellen.html | grep -oiE 'href="[^"]*Bevoelkerungszahl[^"]*\.zip[^"]*"' | head -1 | sed -E 's/^href="//; s/"$//; s/&amp;/\&/g')
-            [ -n "$L" ] && { case "$L" in http*) ;; *) L="https://www.zensus2022.de$L";; esac; curl -sSfL -A "$UA" -o /tmp/z.zip "$L" && Z=ok; }
-          fi
-          if [ -n "$Z" ]; then unzip -l /tmp/z.zip | head -20; F=$(unzip -Z1 /tmp/z.zip | grep -iE '100m.*\.csv$' | head -1); [ -n "$F" ] && unzip -p /tmp/z.zip "$F" > /tmp/z.csv; ls -lh /tmp/z.csv; fi
+          # Zensus 2022 – Bevölkerung im 100-m-Gitter (Link wird von den offiziellen Seiten ermittelt)
+          iszip() { [ -s "$1" ] && [ "$(head -c 2 "$1")" = "PK" ]; }
+          rm -f /tmp/z.zip
+          for pg in https://www.zensus2022.de/DE/Ergebnisse-des-Zensus/_inhalt.html https://www.zensus2022.de/DE/Ergebnisse-des-Zensus/gitterzellen.html https://zensus2022.de/EN/Census_results/02-release-of-results.html https://www.zensus2022.de/DE/Aktuelles/Hinweis_Zensusatlas_VOE.html; do
+            curl -sSfL -A "$UA" "$pg" -o /tmp/pg.html || continue
+            grep -oiE 'href="[^"]+"' /tmp/pg.html | sed -E 's/^href="//; s/"$//; s/&amp;/\&/g' | grep -iE '\.zip|blob=publicationFile' | grep -iE 'bev|gitter' > /tmp/links.txt
+            echo "Zensus-Links auf $pg:"; cat /tmp/links.txt | head -10
+            while read -r L; do
+              case "$L" in http*) ;; /*) L="https://www.zensus2022.de$L";; *) L="https://www.zensus2022.de/${L}";; esac
+              curl -sSfL -A "$UA" -o /tmp/z.zip "$L" && iszip /tmp/z.zip && { echo "Zensus: $L"; break 2; }
+            done < /tmp/links.txt
+          done
+          if iszip /tmp/z.zip; then
+            unzip -l /tmp/z.zip | head -20
+            F=$(unzip -Z1 /tmp/z.zip | grep -iE '100m.*\.csv$' | head -1)
+            if [ -n "$F" ]; then unzip -p /tmp/z.zip "$F" > /tmp/z.csv; else
+              I=$(unzip -Z1 /tmp/z.zip | grep -iE '100m.*\.zip$' | head -1); [ -n "$I" ] && unzip -p /tmp/z.zip "$I" > /tmp/z2.zip && F=$(unzip -Z1 /tmp/z2.zip | grep -iE '\.csv$' | head -1) && unzip -p /tmp/z2.zip "$F" > /tmp/z.csv
+            fi
+            ls -lh /tmp/z.csv; head -3 /tmp/z.csv
+          else echo "Zensus-ZIP nicht gefunden"; fi
           # Ladesäulenregister der Bundesnetzagentur
           L=$(curl -sSfL -A "$UA" https://www.bundesnetzagentur.de/ladeinfrastruktur | grep -oiE 'href="[^"]*\.csv[^"]*"' | head -1 | sed -E 's/^href="//; s/"$//; s/&amp;/\&/g')
           if [ -n "$L" ]; then case "$L" in http*) ;; *) L="https://www.bundesnetzagentur.de$L";; esac; echo "BNetzA: $L"; curl -sSfL -A "$UA" -o /tmp/b.csv "$L"; ls -lh /tmp/b.csv; else echo "BNetzA-Link nicht gefunden"; fi
