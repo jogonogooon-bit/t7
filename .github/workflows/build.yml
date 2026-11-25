@@ -37,7 +37,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: data
-          key: data-v3-${{ steps.wk.outputs.week }}-${{ hashFiles('build/build.mjs', 'build/filters.txt') }}
+          key: data-v4-${{ steps.wk.outputs.week }}-${{ hashFiles('build/build.mjs', 'build/filters.txt') }}
 
       - name: Werkzeuge
         if: steps.cache.outputs.cache-hit != 'true' || inputs.rebuild
@@ -75,15 +75,18 @@ jobs:
           # Zensus 2022 – Bevölkerung im 100-m-Gitter (Link wird von den offiziellen Seiten ermittelt)
           iszip() { [ -s "$1" ] && [ "$(head -c 2 "$1")" = "PK" ]; }
           rm -f /tmp/z.zip
+          curl -sSfL -A "$UA" --retry 3 -o /tmp/z.zip https://www.destatis.de/static/DE/zensus/gitterdaten/Zensus2022_Bevoelkerungszahl.zip || rm -f /tmp/z.zip
+          if ! iszip /tmp/z.zip; then
           for pg in https://www.zensus2022.de/DE/Ergebnisse-des-Zensus/_inhalt.html https://www.zensus2022.de/DE/Ergebnisse-des-Zensus/gitterzellen.html https://zensus2022.de/EN/Census_results/02-release-of-results.html https://www.zensus2022.de/DE/Aktuelles/Hinweis_Zensusatlas_VOE.html; do
             curl -sSfL -A "$UA" "$pg" -o /tmp/pg.html || continue
-            grep -oiE 'href="[^"]+"' /tmp/pg.html | sed -E 's/^href="//; s/"$//; s/&amp;/\&/g' | grep -iE '\.zip|blob=publicationFile' | grep -iE 'bev|gitter' > /tmp/links.txt
+            grep -oiE 'href="[^"]+"' /tmp/pg.html | sed -E 's/^href="//; s/"$//; s/&amp;/\&/g' | grep -iE '\.zip' | grep -iE 'bevoelkerungszahl' > /tmp/links.txt
             echo "Zensus-Links auf $pg:"; cat /tmp/links.txt | head -10
             while read -r L; do
               case "$L" in http*) ;; /*) L="https://www.zensus2022.de$L";; *) L="https://www.zensus2022.de/${L}";; esac
               curl -sSfL -A "$UA" -o /tmp/z.zip "$L" && iszip /tmp/z.zip && { echo "Zensus: $L"; break 2; }
             done < /tmp/links.txt
           done
+          fi
           if iszip /tmp/z.zip; then
             unzip -l /tmp/z.zip | head -20
             F=$(unzip -Z1 /tmp/z.zip | grep -iE '100m.*\.csv$' | head -1)
